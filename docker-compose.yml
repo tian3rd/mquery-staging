@@ -2,9 +2,12 @@ version: '3.8'
 
 services:
   app:
+    image: mquery-backend:latest
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        - IMAGE_NAME=mquery-backend
     command: >
       /bin/sh -c 'cd /app && ./pre-start.sh && exec uvicorn app:app --host 0.0.0.0 --port 8000 --workers 2'
     ports:

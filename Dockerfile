@@ -26,5 +26,4 @@ RUN mkdir -p /app/data && \
 # Expose port
 EXPOSE 8000
 
-# Start the application with uvicorn
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+# Start the application with uvicorn (controlled by docker-compose)

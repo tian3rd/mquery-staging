@@ -206,7 +206,25 @@ docker run -d -p 8000:8000 mquery-backend
 
 #### Production Mode
 
-1. On your EC2 instance:
+1. Build and push to ECR:
+```bash
+# Stop any existing containers
+docker-compose down
+
+# Build with the correct image name
+docker-compose build
+
+# Tag the image for ECR
+docker tag mquery-backend:latest 905418328516.dkr.ecr.ap-southeast-2.amazonaws.com/dev/mquery-backend:latest
+
+# Login to ECR
+aws ecr get-login-password --region ap-southeast-2 | docker login --username AWS --password-stdin 905418328516.dkr.ecr.ap-southeast-2.amazonaws.com
+
+# Push to ECR
+docker push 905418328516.dkr.ecr.ap-southeast-2.amazonaws.com/dev/mquery-backend:latest
+```
+
+2. On your EC2 instance:
 ```bash
 # SSH into EC2
 ssh -i your-key.pem ubuntu@your-ec2-public-ip
