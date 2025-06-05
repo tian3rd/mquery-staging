@@ -232,17 +232,60 @@ ssh -i your-key.pem ubuntu@your-ec2-public-ip
 # Navigate to your project directory
 cd mquery-staging
 
+# Login to ECR
+aws ecr get-login-password --region ap-southeast-2 | docker login --username AWS --password-stdin 905418328516.dkr.ecr.ap-southeast-2.amazonaws.com
+
 # Pull latest image and restart containers
 docker-compose pull
 docker-compose up -d
 
 # Verify everything is running
-docker-compose ps  # Check container status
-docker-compose logs -f  # View logs
-curl http://localhost:8000  # Test the API
+
+1. Check container status:
+```bash
+docker-compose ps
+```
+You should see the app container running with status "Up"
+
+2. Check logs for any errors:
+```bash
+docker-compose logs -f
+```
+Look for successful startup messages and no errors
+
+3. Test the API endpoints:
+```bash
+# Test root endpoint
+curl http://localhost:8000
+# Should return: {"message": "DuckDB Query API is running"}
+
+# Test healthcheck
+curl http://localhost:8000/health
+# Should return 200 status code
+
+# Test columns endpoint
+curl http://localhost:8000/columns
+# Should return list of columns
+```
+
+4. If you want to access it from outside:
+- Make sure port 8000 is open in your EC2 security group
+- Access it using your EC2 public IP:
+```bash
+curl http://your-ec2-public-ip:8000
+```
 
 # If you need to stop the service
 docker-compose down
+
+# If you need to restart the service
+docker-compose restart
+
+# If you need to view container details
+docker ps -a
+
+# If you need to view container logs
+docker logs mquery-staging_app_1
 ```
 
 ### Production Considerations
