@@ -12,7 +12,7 @@ conn = duckdb.connect(database=':memory:')
 
 # Load the parquet file into DuckDB
 try:
-    conn.execute("CREATE TABLE youth_risk AS SELECT * FROM read_parquet('YouthRisk2007.pq')")
+    conn.execute("CREATE TABLE dataset AS SELECT * FROM read_parquet('YouthRisk2007.pq')")
 except Exception as e:
     raise HTTPException(status_code=500, detail=f"Failed to load data: {str(e)}")
 
@@ -32,7 +32,7 @@ def read_root():
 def get_columns():
     """Get list of all columns in the dataset"""
     try:
-        result = conn.execute("SELECT column_name FROM information_schema.columns WHERE table_name = 'youth_risk'").fetchall()
+        result = conn.execute("SELECT column_name FROM information_schema.columns WHERE table_name = 'dataset'").fetchall()
         return {"columns": [col[0] for col in result]}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

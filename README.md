@@ -27,7 +27,7 @@ The API will be available at http://localhost:8000
 Send a POST request to `/query` with the following JSON body:
 ```json
 {
-    "query": "SELECT * FROM youth_risk WHERE age > {min_age} LIMIT 10",
+    "query": "SELECT * FROM dataset WHERE age > {min_age} LIMIT 10",
     "params": {
         "min_age": 18
     }
@@ -316,11 +316,42 @@ curl http://localhost:8000/columns
 # Should return list of columns
 ```
 
-4. If you want to access it from outside:
-- Make sure port 8000 is open in your EC2 security group
-- Access it using your EC2 public IP:
+4. Testing from Anywhere
+
+First, get your EC2 instance's public IP:
 ```bash
-curl http://your-ec2-public-ip:8000
+curl http://169.254.169.254/latest/meta-data/public-ipv4
+```
+
+Make sure port 8000 is open in your EC2 security group:
+1. Go to AWS Console -> EC2 -> Security Groups
+2. Find your EC2 instance's security group
+3. Add inbound rule:
+   - Type: Custom TCP
+   - Port: 8000
+   - Source: 0.0.0.0/0 (or your specific IP range)
+
+Then you can test from any computer:
+
+```bash
+# Replace YOUR_EC2_IP with your actual EC2 public IP
+
+# Note: Use HTTP (not HTTPS) since we're running the FastAPI server directly
+# HTTPS setup requires additional configuration with a reverse proxy
+
+# Test root endpoint, e.g 16.176.218.132
+curl http://YOUR_EC2_IP:8000
+
+# Test columns endpoint
+curl http://YOUR_EC2_IP:8000/columns
+
+# Test query endpoint with POST request
+curl -X POST http://YOUR_EC2_IP:8000/query \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "SELECT * FROM dataset LIMIT 1",
+    "params": {}
+  }'
 ```
 
 # If you need to stop the service
