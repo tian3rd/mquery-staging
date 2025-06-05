@@ -36,6 +36,54 @@ Send a POST request to `/query` with the following JSON body:
 
 ## Production Deployment using Docker
 
+### Troubleshooting: "exec format error"
+
+If you see the error `exec /bin/sh: exec format error`, try these steps:
+
+1. Check script permissions:
+```bash
+ls -l pre-start.sh
+# Should show: -rwxr-xr-x 1 user user ... pre-start.sh
+```
+
+2. Fix permissions if needed:
+```bash
+chmod +x pre-start.sh
+```
+
+3. Check script contents:
+```bash
+cat pre-start.sh
+# Verify the first line is: #!/bin/sh
+```
+
+4. Fix line endings (if using Windows):
+```bash
+# Install dos2unix if needed
+apt-get update && apt-get install -y dos2unix
+
+# Convert line endings
+dos2unix pre-start.sh
+```
+
+5. Verify shell availability:
+```bash
+which sh
+# Should return /bin/sh
+```
+
+6. Try running the script manually:
+```bash
+/bin/sh pre-start.sh
+```
+
+If the error persists after these steps, consider:
+1. Using a simpler command in docker-compose.yml
+2. Removing the pre-start script and running uvicorn directly
+3. Checking for hidden characters in the script using `cat -A pre-start.sh`
+
+## Production Deployment using Docker
+
 ### Prerequisites
 
 1. Docker and Docker Compose installed on your system
