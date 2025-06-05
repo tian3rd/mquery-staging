@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <title>SM MetaQuery</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/picocss/2.0.6/pico.min.css"
+    integrity="sha512-UXfikgakSZBii5lkvmDCRO+IYWQhTtwMOJ+3EmGEA+oA82kvbSskgw3OI16Jx1kINgF8aqOkYE+c9h4m6muONg=="
+    crossorigin="anonymous" referrerpolicy="no-referrer" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/lz-string.min.js"
+    integrity="sha512-qtX0GLM3qX8rxJN1gyDfcnMFFrKvixfoEOwbBib9VafR5vbChV5LeE5wSI/x+IlCkTY5ZFddFDCCfaVJJNnuKQ=="
+    crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script type="module" src="index.js"></script>
+  <style>
+    :root {
+      --pico-font-size: 100%;
+    }
+
+    dialog article {
+      max-width: min(50vw, 90ch);
+    }
+
+    th {
+      top: 0px;
+      position: sticky;
+    }
+
+    a:hover {
+      cursor: pointer;
+    }
+
+    html,
+    body,
+    #app {
+      width: 100vw;
+      height: 100dvh;
+      overflow: hidden;
+      margin: 0;
+      padding: 0;
+    }
+
+    #app {
+      display: flex;
+      flex-direction: column;
+      padding-top: var(--pico-spacing);
+    }
+
+    .lower-container {
+      flex: auto;
+      height: 100%;
+      width: 100%;
+      overflow: auto;
+      display: flex;
+      flex-direction: row;
+      border-top: 1px solid black;
+    }
+
+    .truncated {
+      max-inline-size: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .truncated:hover {
+      text-overflow: initial;
+      overflow: auto;
+    }
+
+    button.clear-input {
+      background: var(--pico-icon-close);
+      background-position: center;
+      background-size: auto 1rem;
+      background-repeat: no-repeat;
+      padding: var(--pico-form-element-spacing-vertical) calc(0.5 * var(--pico-form-element-spacing-horizontal));
+      border-color: var(--pico-form-element-border-color);
+    }
+  </style>
+</head>
+
+<body>
+  <pre id="app-loading"></pre>
+  <main id="app" style="display: none;">
+    <section class="container">
+      <h1>Seeing Machines MetaQuery (<a @click.prevent="setHelp(true)">help</a>)</h1>
+      <form>
+        <textarea style="font-family: monospace;" ref="queryTextarea" @keydown.ctrl.enter="runQuery"
+          :disabled=loading></textarea>
+        <div>
+          <button @click.prevent="runQuery" :disabled=loading>run</button>
+          <button @click.prevent="cancelQuery" style="background-color: red;" ref="cancelButton"
+            v-show="loading">cancel</button>
+          <article v-show="!loading && !error" style="display: inline-block; margin: 0 0 0 var(--pico-spacing);">
+            <strong>Export:</strong> <a @click.prevent="exportFormat('csv')">CSV</a> / <a
+              @click.prevent="exportFormat('csv', { options: &quot;SEP '\t'&quot;, extension: 'tsv' })">TSV</a> / JSON
+            (<a @click.prevent="exportFormat('json', { options: 'ARRAY true' })">array</a>,
+            <a @click.prevent="exportFormat('json', { options: 'ARRAY false', extension: 'ndjson' })">newlines</a>) / <a
+              @click.prevent="exportFormat('parquet', { extension: 'pq' })">Parquet</a>
+          </article>
+        </div>
+      </form>
+    </section>
+
+    <div v-if="loading" class="container">
+      <h2>Loading...</h2><progress></progress>
+    </div>
+    <div v-else-if="error" class="container">
+      <h2>Error</h2>
+      <pre><code>{{ error }}</code></pre>
+    </div>
+    <div v-else class="lower-container">
+      <div
+        style="padding: calc(var(--pico-spacing)/ 2) var(--pico-spacing); width: 30ch; flex: none; border-right: 1px solid black; height: 100%; overflow: auto;">
+        <div role="group">
+          <input v-model="columnSelector" ref="columnSelectorInput" placeholder="Search through columns">
+          <button class="clear-input"
+            @click="() => { columnSelector = ''; $refs.columnSelectorInput.focus(); }"></button>
+        </div>
+        <div role="group">
+          <button @click="showSelectedColumns(true);">Show all</button>
+          <button @click="showSelectedColumns(false);">Hide all</button>
+        </div>
+        <details open>
+          <summary>showing ({{ visibleColumns.length }}/{{ columnConfig.size }})</summary>
+          <ul v-if="!loading && !error && data.value.numRows > 0">
+            <template v-for="col in visibleColumns">
+              <li v-if="col.name.includes(columnSelector)" :key="col.name">
+                <abbr v-if="col.allNull" data-placement="right" data-tooltip="All NULLs">🚫</abbr>
+                <a @click.prevent="col.visible = false">{{ col.name }}</a>
+              </li>
+            </template>
+          </ul>
+        </details>
+        <details open>
+          <summary>hiding ({{ hiddenColumns.length }}/{{ columnConfig.size }})</summary>
+          <ul v-if="!loading && !error && data.value.numRows > 0">
+            <template v-for="col in hiddenColumns">
+              <li v-if="col.name.includes(columnSelector)" :key="col.name">
+                <span v-if="col.allNull">
+                  <abbr data-placement="right" data-tooltip="All NULLs">🚫</abbr>
+                  {{ col.name }}
+                </span>
+                <a v-else @click.prevent="col.visible = true">{{ col.name }}</a>
+              </li>
+            </template>
+          </ul>
+        </details>
+      </div>
+      <div style="width: calc(100% - 30ch); height: 100%; flex: auto;">
+        <div style="max-height: 100%; display: flex; flex-direction: column;">
+          <div style="max-height: 100%; flex: initial; overflow: auto;">
+            <table class="striped">
+              <thead>
+                <tr>
+                  <th v-for="header in headers" :key="header" style="max-width: 30ch;">
+                    {{ header }}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(row, index) in pagedData" :key="index">
+                  <td v-for="header in headers" :key="header" class="truncated" style="max-width: 30ch;">
+                    {{ row[header] }}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div style="padding: 0 var(--pico-spacing); background-color: #eee; border-top: 1px solid #ccc;">
+            Rows per page:
+            <select v-model.number="pageSize"
+              style="display: inline-block; width: initial; margin: 0; padding: 0 2rem 0 0;">
+              <option>25</option>
+              <option>50</option>
+              <option selected>100</option>
+              <option>200</option>
+              <option>500</option>
+            </select>
+            Total: {{ data.value.numRows }} rows (showing {{ 1 + page * pageSize }}–{{ Math.min((page + 1) * pageSize,
+            data.value.numRows)
+            }})
+            <a v-if="page > 0" @click="page--">Previous</a> <a v-if="(page+1)*pageSize < data.value.numRows"
+              @click="page++">Next</a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <dialog :open="helpOpen" @click="setHelp(false)">
+      <article @click.stop="">
+        <header>
+          <button aria-label="Close" rel="prev" @click="setHelp(false)"></button>
+          <p>
+            <strong>Help and examples</strong>
+          </p>
+        </header>
+        <p>This metadata explorer is powered by DuckDB running on a cached version of the metadata, running in the
+          browser. For more information about DuckDB SQL, see <a
+            href="https://duckdb.org/docs/sql/introduction#querying-a-table" target="_blank">their official
+            documentation</a>.</p>
+      </article>
+    </dialog>
+
+  </main>
+
+</body>
+
+</html>
