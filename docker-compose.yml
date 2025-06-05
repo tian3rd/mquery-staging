@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   app:
-    image: mquery-backend:latest
+    image: 905418328516.dkr.ecr.ap-southeast-2.amazonaws.com/dev/mquery-backend:latest
     build:
       context: .
       dockerfile: Dockerfile
