@@ -2,11 +2,50 @@ version: '3.8'
 
 services:
   app:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     ports:
       - "8000:8000"
     volumes:
-      - .:/app
+      - .:/app:ro  # Read-only for code
+      - ./data:/app/data  # Persistent storage for data
     environment:
       - PYTHONPATH=/app
-    restart: always
+      - PORT=8000
+      - HOST=0.0.0.0
+      - LOG_LEVEL=info
+      - UWSGI_HTTP_TIMEOUT=30  # Reduced timeout
+      - UWSGI_WORKERS=2  # Match with uvicorn workers
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 15s  # Reduced interval for t3.small
+      timeout: 5s    # Reduced timeout
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '1.5'
+          memory: 1.5G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"  # Reduced log size
+        max-file: "2"   # Reduced log files
+        compress: "true"
+    sysctls:
+      - net.core.somaxconn=511  # Optimize connection handling
+    ulimits:
+      nofile:
+        soft: 1024
+        hard: 1024
+    security_opt:
+      - no-new-privileges:true  # Security hardening
+    cap_drop:
+      - ALL  # Drop all capabilities
+    tmpfs:
+      - /tmp  # Use tmpfs for temporary files
