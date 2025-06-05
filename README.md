@@ -84,6 +84,266 @@ If the error persists after these steps, consider:
 
 ## Production Deployment using Docker
 
+### Automated Deployment with AWS CodePipeline
+
+### Automated Deployment Options
+
+<details>
+<summary>💻 AWS Console Setup</summary>
+
+1. **Create IAM Role for CodeDeploy**:
+   1. Go to AWS Console -> IAM -> Roles
+   2. Click "Create role"
+   3. Select "CodeDeploy" as the service that will use this role
+   4. Attach policies:
+      - AWSCodeDeployAgentRole
+      - AmazonEC2ContainerRegistryReadOnly
+   5. Name it "CodeDeployServiceRole"
+   6. Click "Create role"
+
+2. **Create IAM Role for CodePipeline**:
+   1. Go to AWS Console -> IAM -> Roles
+   2. Click "Create role"
+   3. Select "CodePipeline" as the service that will use this role
+   4. Attach policies:
+      - AWSCodePipelineFullAccess
+      - AWSCodeDeployFullAccess
+   5. Name it "CodePipelineServiceRole"
+   6. Click "Create role"
+
+3. **Create CodeDeploy Application**:
+   1. Go to AWS Console -> CodeDeploy
+   2. Click "Create application"
+   3. Application name: "mquery-staging"
+   4. Compute platform: "EC2/On-premises"
+   5. Click "Create application"
+
+4. **Create Deployment Group**:
+   1. In CodeDeploy console, click "Create deployment group"
+   2. Application name: Select "mquery-staging"
+   3. Deployment group name: "mquery-staging-group"
+   4. Service role: Select "CodeDeployServiceRole"
+   5. Target: EC2 instances
+   6. Environment configuration: "In-place deployment"
+   7. Deployment configuration: "CodeDeployDefault.OneAtATime"
+   8. Tag key: "Name"
+   9. Tag value: "mquery-staging"
+   10. Click "Create deployment group"
+
+5. **Install CodeDeploy Agent on EC2**:
+   1. SSH into your EC2 instance
+   2. Run these commands:
+   ```bash
+   sudo apt-get update
+   sudo apt-get install ruby
+   sudo apt-get install wget
+   cd /home/admin
+   wget https://aws-codedeploy-ap-southeast-2.s3.ap-southeast-2.amazonaws.com/latest/install
+   chmod +x ./install
+   sudo ./install auto
+   ```
+   3. Verify installation:
+   ```bash
+   sudo service codedeploy-agent status
+   ```
+
+6. **Create CodePipeline**:
+   1. Go to AWS Console -> CodePipeline
+   2. Click "Create pipeline"
+   3. Pipeline name: "mquery-staging-pipeline"
+   4. Service role: "CodePipelineServiceRole"
+   5. Click "Create"
+
+7. **Add Source Stage**:
+   1. Click "Add source stage"
+   2. Source provider: "GitHub"
+   3. Connect to GitHub
+   4. Repository: Select your repository
+   5. Branch: "main"
+   6. Click "Add source"
+
+8. **Add Deploy Stage**:
+   1. Click "Add deploy stage"
+   2. Deployment provider: "CodeDeploy"
+   3. Application name: "mquery-staging"
+   4. Deployment group: "mquery-staging-group"
+   5. Click "Add deploy"
+   6. Click "Create pipeline"
+
+9. **Verify Pipeline**:
+   1. Go to CodePipeline console
+   2. Click on your pipeline
+   3. You should see the pipeline stages:
+      - Source (GitHub)
+      - Deploy (CodeDeploy)
+   4. Click "Release change" to manually trigger the first deployment
+
+10. **Test Deployment**:
+    1. After deployment completes:
+    ```bash
+    # Test endpoints
+    curl http://YOUR_EC2_IP:8000
+    ```
+</details>
+
+<details>
+<summary>💻 AWS CLI Setup</summary>
+
+1. **Create IAM Roles**:
+```bash
+# Create CodeDeploy role
+aws iam create-role --role-name CodeDeployServiceRole --assume-role-policy-document '{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Principal": {
+                "Service": "codedeploy.amazonaws.com"
+            },
+            "Action": "sts:AssumeRole"
+        }
+    ]
+}'
+
+# Attach CodeDeploy permissions
+aws iam attach-role-policy --role-name CodeDeployServiceRole --policy-arn arn:aws:iam::aws:policy/service-role/AWSCodeDeployRole
+aws iam attach-role-policy --role-name CodeDeployServiceRole --policy-arn arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+
+# Create CodePipeline role
+aws iam create-role --role-name CodePipelineServiceRole --assume-role-policy-document '{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Principal": {
+                "Service": "codepipeline.amazonaws.com"
+            },
+            "Action": "sts:AssumeRole"
+        }
+    ]
+}'
+
+# Attach CodePipeline permissions
+aws iam attach-role-policy --role-name CodePipelineServiceRole --policy-arn arn:aws:iam::aws:policy/AWSCodePipelineFullAccess
+aws iam attach-role-policy --role-name CodePipelineServiceRole --policy-arn arn:aws:iam::aws:policy/AWSCodeDeployFullAccess
+```
+
+2. **Create CodeDeploy Application**:
+```bash
+aws deploy create-application --application-name mquery-staging
+```
+
+3. **Create Deployment Group**:
+```bash
+aws deploy create-deployment-group \
+    --application-name mquery-staging \
+    --deployment-group-name mquery-staging-group \
+    --service-role-arn arn:aws:iam::YOUR_ACCOUNT_ID:role/CodeDeployServiceRole \
+    --deployment-config-name CodeDeployDefault.OneAtATime \
+    --ec2-tag-filters Key=Name,Value=mquery-staging,Type=KEY_AND_VALUE \
+    --auto-scaling-groups mquery-staging
+```
+
+4. **Create CodePipeline**:
+```bash
+aws codepipeline create-pipeline --cli-input-json '{
+    "pipeline": {
+        "name": "mquery-staging-pipeline",
+        "roleArn": "arn:aws:iam::YOUR_ACCOUNT_ID:role/CodePipelineServiceRole",
+        "stages": [
+            {
+                "name": "Source",
+                "actions": [
+                    {
+                        "name": "Source",
+                        "actionTypeId": {
+                            "category": "Source",
+                            "owner": "AWS",
+                            "provider": "CodeCommit",
+                            "version": "1"
+                        },
+                        "runOrder": 1,
+                        "configuration": {
+                            "RepositoryName": "mquery-staging",
+                            "BranchName": "main"
+                        },
+                        "outputArtifacts": [
+                            {
+                                "name": "SourceArtifact"
+                            }
+                        ]
+                    }
+                ]
+            },
+            {
+                "name": "Deploy",
+                "actions": [
+                    {
+                        "name": "Deploy",
+                        "actionTypeId": {
+                            "category": "Deploy",
+                            "owner": "AWS",
+                            "provider": "CodeDeploy",
+                            "version": "1"
+                        },
+                        "runOrder": 1,
+                        "configuration": {
+                            "ApplicationName": "mquery-staging",
+                            "DeploymentGroupName": "mquery-staging-group"
+                        },
+                        "inputArtifacts": [
+                            {
+                                "name": "SourceArtifact"
+                            }
+                        ]
+                    }
+                ]
+            }
+        ],
+        "artifactStore": {
+            "type": "S3",
+            "location": "codepipeline-ap-southeast-2-YOUR_ACCOUNT_ID"
+        }
+    }
+}'
+```
+
+5. **Configure EC2 Instance**:
+```bash
+# Install CodeDeploy agent
+sudo apt-get update
+sudo apt-get install ruby
+sudo apt-get install wget
+cd /home/admin
+wget https://aws-codedeploy-ap-southeast-2.s3.ap-southeast-2.amazonaws.com/latest/install
+chmod +x ./install
+sudo ./install auto
+
+# Verify installation
+sudo service codedeploy-agent status
+```
+
+6. **Start Pipeline**:
+```bash
+aws codepipeline start-pipeline-execution --name mquery-staging-pipeline
+```
+</details>
+
+Now, every time you push code to your repository:
+1. CodePipeline will detect changes
+2. Pull latest code from GitHub
+3. Use CodeDeploy to deploy to your EC2 instance
+4. Run the deployment script to update containers
+5. Verify the deployment success
+
+You can monitor the deployment progress in:
+- CodePipeline console
+- CodeDeploy console
+- EC2 instance logs
+- Your EC2 instance's health checks
+
+## Production Deployment using Docker
+
 ### Prerequisites
 
 1. Docker and Docker Compose installed on your system
