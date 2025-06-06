@@ -1,0 +1,28 @@
+version: 0.0
+os: linux
+files:
+  - source: /deployment/
+    destination: /opt/mquery-staging/deployment/
+  - source: /docker-compose.yml
+    destination: /opt/mquery-staging/
+
+hooks:
+  BeforeInstall:
+    - location: deployment/run_setup.sh
+      timeout: 300
+      runas: root
+
+  ApplicationStart:
+    - location: deployment/deploy.sh
+      timeout: 300
+      runas: ubuntu
+
+  HealthCheck:
+    - location: deployment/health_check.sh
+      timeout: 300
+      runas: ubuntu
+
+  ValidateService:
+    - location: deployment/validate_service.sh
+      timeout: 300
+      runas: ubuntu
