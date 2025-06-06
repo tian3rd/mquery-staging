@@ -102,6 +102,7 @@ EOL
 log "Reloading systemd and starting service..."
 systemctl daemon-reload
 systemctl enable deploy.service
+systemctl start deploy.service
 
 # Check service status
 log "Checking service status..."
