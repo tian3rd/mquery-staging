@@ -85,6 +85,9 @@ RemainAfterExit=true
 User=$USER
 Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 WorkingDirectory=/opt/mquery-staging
+TimeoutStartSec=600
+Restart=on-failure
+RestartSec=30
 
 [Install]
 WantedBy=multi-user.target
