@@ -161,9 +161,9 @@ fi
 
 log "ECR authentication verified successfully!"
 
-# Pull latest image
-log "Pulling latest image from ECR..."
-docker pull "$ECR_IMAGE" || handle_error "Failed to pull Docker image"
+# Pull latest image using docker-compose
+log "Pulling latest image from ECR using docker-compose..."
+docker-compose pull || handle_error "Failed to pull Docker image"
 
 # Start new containers
 log "Starting new containers..."
