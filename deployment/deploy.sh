@@ -113,26 +113,33 @@ if [ $? -ne 0 ]; then
     handle_error "Failed to get ECR token"
 fi
 
+# Create a script to handle Docker authentication
+AUTH_SCRIPT="/opt/mquery-staging/ecr-auth.sh"
+log "Creating Docker authentication script..."
+cat > "$AUTH_SCRIPT" << 'EOL'
+#!/bin/bash
+TOKEN="$1"
+
 # Login to ECR
-log "Logging into ECR..."
-LOGIN_OUTPUT=$(echo "$TOKEN" | docker login --username AWS --password-stdin 905418328516.dkr.ecr.ap-southeast-2.amazonaws.com 2>&1)
-if [ $? -ne 0 ]; then
-    log "Docker login output: $LOGIN_OUTPUT"
-    handle_error "Failed to login to ECR"
-fi
+echo "$TOKEN" | docker login --username AWS --password-stdin 905418328516.dkr.ecr.ap-southeast-2.amazonaws.com
 
-# Verify login
-log "Verifying ECR login..."
-TEST_PULL_OUTPUT=$(docker pull 905418328516.dkr.ecr.ap-southeast-2.amazonaws.com/dev/mquery-backend:latest 2>&1)
-if [ $? -ne 0 ]; then
-    log "Test pull output: $TEST_PULL_OUTPUT"
-    handle_error "Failed to verify ECR login"
-fi
+# Pull the image
+docker pull 905418328516.dkr.ecr.ap-southeast-2.amazonaws.com/dev/mquery-backend:latest
 
-log "ECR authentication verified successfully!"
+# Verify the pull
+docker inspect 905418328516.dkr.ecr.ap-southeast-2.amazonaws.com/dev/mquery-backend:latest
+EOL
+chmod +x "$AUTH_SCRIPT"
 
-# Login to ECR with retry
-ecr_login
+# Run the authentication script
+log "Running Docker authentication..."
+$AUTH_SCRIPT "$TOKEN" || handle_error "Failed to authenticate and pull image"
+
+log "Docker authentication and image pull successful!"
+
+# Clean up
+log "Cleaning up authentication script..."
+rm -f "$AUTH_SCRIPT"
 
 # Verify login
 log "Verifying ECR login..."
