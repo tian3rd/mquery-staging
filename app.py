@@ -1,9 +1,9 @@
+from datetime import datetime
+
+import duckdb
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-import duckdb
-import pandas as pd
 from typing import List, Dict, Any
-import json
 
 app = FastAPI(title="DuckDB Query API")
 
