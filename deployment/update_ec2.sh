@@ -89,6 +89,11 @@ TimeoutStartSec=600
 Restart=on-failure
 RestartSec=30
 
+# Ensure proper permissions
+PermissionsStartOnly=true
+ExecStartPre=/bin/chown -R $USER:$USER /opt/mquery-staging
+ExecStartPre=/bin/chmod -R 700 /opt/mquery-staging
+
 [Install]
 WantedBy=multi-user.target
 EOL

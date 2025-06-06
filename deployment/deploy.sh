@@ -87,6 +87,12 @@ get_ecr_token() {
         TOKEN=$(aws ecr get-login-password --region ap-southeast-2)
         if [ -n "$TOKEN" ]; then
             log "Successfully got ECR token"
+            
+            # Save token to file for service user
+            TOKEN_FILE="/opt/mquery-staging/ecr-token"
+            echo "$TOKEN" > "$TOKEN_FILE"
+            chmod 600 "$TOKEN_FILE"
+            
             return 0
         fi
         
@@ -106,12 +112,15 @@ ecr_login() {
     local max_retries=5
     local retry_delay=5
     local attempt=1
+    local TOKEN_FILE="/opt/mquery-staging/ecr-token"
     
     while [ $attempt -le $max_retries ]; do
         log "Attempt $attempt of $max_retries to login to ECR..."
-        if echo "$TOKEN" | docker login --username AWS --password-stdin 905418328516.dkr.ecr.ap-southeast-2.amazonaws.com; then
-            log "Successfully logged into ECR"
-            return 0
+        if [ -f "$TOKEN_FILE" ]; then
+            if cat "$TOKEN_FILE" | docker login --username AWS --password-stdin 905418328516.dkr.ecr.ap-southeast-2.amazonaws.com; then
+                log "Successfully logged into ECR"
+                return 0
+            fi
         fi
         
         log "Failed to login to ECR, retrying in $retry_delay seconds..."
