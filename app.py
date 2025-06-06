@@ -37,6 +37,10 @@ def get_columns():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/health")
+def health_check():
+    return {"status": "ok", "timestamp": datetime.now().isoformat()}
+
 @app.post("/query")
 def execute_query(request: QueryRequest):
     """Execute a SQL query against the dataset"""
