@@ -69,6 +69,35 @@ fi
 log "Stopping and removing existing containers..."
 docker-compose down --remove-orphans || handle_error "Failed to stop containers"
 
+# Verify IAM role and permissions
+log "Verifying IAM role and permissions..."
+
+# Verify we can get caller identity
+log "Checking AWS STS..."
+CALLER_ID=$(aws sts get-caller-identity 2>&1)
+if [ $? -ne 0 ]; then
+    log "AWS STS output: $CALLER_ID"
+    handle_error "Failed to verify AWS STS - IAM role might not be properly attached"
+fi
+
+# Extract role name from caller identity
+ROLE=$(echo "$CALLER_ID" | jq -r '.Arn' | awk -F'/' '{print $2}')
+if [ -z "$ROLE" ]; then
+    handle_error "Failed to extract IAM role name from caller identity"
+fi
+
+log "Found IAM role: $ROLE"
+
+# Verify ECR permissions
+log "Verifying ECR permissions..."
+REPOS=$(aws ecr describe-repositories --repository-names dev/mquery-backend 2>&1)
+if [ $? -ne 0 ]; then
+    log "ECR describe-repositories output: $REPOS"
+    handle_error "Failed to verify ECR permissions"
+fi
+
+log "Verified ECR permissions"
+
 # Authenticate with ECR
 log "Authenticating with ECR..."
 
@@ -76,60 +105,31 @@ log "Authenticating with ECR..."
 log "Verifying AWS CLI configuration..."
 aws configure list || handle_error "AWS CLI is not configured"
 
-# Function to get ECR token with retry
-get_ecr_token() {
-    local max_retries=5
-    local retry_delay=5
-    local attempt=1
-    
-    while [ $attempt -le $max_retries ]; do
-        log "Attempt $attempt of $max_retries to get ECR token..."
-        TOKEN=$(aws ecr get-login-password --region ap-southeast-2)
-        if [ -n "$TOKEN" ]; then
-            log "Successfully got ECR token"
-            
-            # Save token to file for service user
-            TOKEN_FILE="/opt/mquery-staging/ecr-token"
-            echo "$TOKEN" > "$TOKEN_FILE"
-            chmod 600 "$TOKEN_FILE"
-            
-            return 0
-        fi
-        
-        log "Failed to get ECR token, retrying in $retry_delay seconds..."
-        sleep $retry_delay
-        attempt=$((attempt + 1))
-    done
-    
-    handle_error "Failed to get ECR token after $max_retries attempts"
-}
+# Get ECR token
+log "Getting ECR token..."
+TOKEN=$(aws ecr get-login-password --region ap-southeast-2 2>&1)
+if [ $? -ne 0 ]; then
+    log "AWS CLI output: $TOKEN"
+    handle_error "Failed to get ECR token"
+fi
 
-# Get ECR token with retry
-get_ecr_token
+# Login to ECR
+log "Logging into ECR..."
+LOGIN_OUTPUT=$(echo "$TOKEN" | docker login --username AWS --password-stdin 905418328516.dkr.ecr.ap-southeast-2.amazonaws.com 2>&1)
+if [ $? -ne 0 ]; then
+    log "Docker login output: $LOGIN_OUTPUT"
+    handle_error "Failed to login to ECR"
+fi
 
-# Function to login to ECR with retry
-ecr_login() {
-    local max_retries=5
-    local retry_delay=5
-    local attempt=1
-    local TOKEN_FILE="/opt/mquery-staging/ecr-token"
-    
-    while [ $attempt -le $max_retries ]; do
-        log "Attempt $attempt of $max_retries to login to ECR..."
-        if [ -f "$TOKEN_FILE" ]; then
-            if cat "$TOKEN_FILE" | docker login --username AWS --password-stdin 905418328516.dkr.ecr.ap-southeast-2.amazonaws.com; then
-                log "Successfully logged into ECR"
-                return 0
-            fi
-        fi
-        
-        log "Failed to login to ECR, retrying in $retry_delay seconds..."
-        sleep $retry_delay
-        attempt=$((attempt + 1))
-    done
-    
-    handle_error "Failed to login to ECR after $max_retries attempts"
-}
+# Verify login
+log "Verifying ECR login..."
+TEST_PULL_OUTPUT=$(docker pull 905418328516.dkr.ecr.ap-southeast-2.amazonaws.com/dev/mquery-backend:latest 2>&1)
+if [ $? -ne 0 ]; then
+    log "Test pull output: $TEST_PULL_OUTPUT"
+    handle_error "Failed to verify ECR login"
+fi
+
+log "ECR authentication verified successfully!"
 
 # Login to ECR with retry
 ecr_login
