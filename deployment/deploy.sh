@@ -81,7 +81,7 @@ if [ $? -ne 0 ]; then
 fi
 
 # Extract role name from caller identity
-ROLE=$(echo "$CALLER_ID" | jq -r '.Arn' | awk -F'/' '{print $2}')
+ROLE=$(echo "$CALLER_ID" | grep -oP '(?<=role/)[^/]+')
 if [ -z "$ROLE" ]; then
     handle_error "Failed to extract IAM role name from caller identity"
 fi

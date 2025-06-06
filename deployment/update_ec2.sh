@@ -68,7 +68,8 @@ sudo ./deployment/safe_setup_ec2.sh || handle_error "Failed to run setup script"
 
 # Install required packages
 log "Installing required packages..."
-sudo apt-get install -y bc || handle_error "Failed to install bc"
+apt-get update -y
+apt-get install -y bc jq || handle_error "Failed to install bc"
 
 # Set up deployment service
 log "Setting up deployment service..."
