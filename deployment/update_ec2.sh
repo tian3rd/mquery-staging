@@ -43,9 +43,28 @@ else
     cd "$REPO_DIR" || handle_error "Failed to change to repository directory"
 fi
 
-# Run setup script
+# Ensure deployment directory exists and has proper permissions
+if [ ! -d "deployment" ]; then
+    log "Creating deployment directory..."
+    mkdir -p deployment
+    chmod 755 deployment
+fi
+
+# Ensure all deployment scripts have proper permissions
+log "Setting up script permissions..."
+for script in deployment/*.sh; do
+    if [ -f "$script" ]; then
+        log "Setting permissions for $script..."
+        chmod +x "$script"
+        if ! [ -x "$script" ]; then
+            log "Warning: Failed to set execute permission for $script"
+        fi
+    fi
+done
+
+# Run setup script with proper path
 log "Running setup script..."
-./deployment/safe_setup_ec2.sh || handle_error "Failed to run setup script"
+sudo ./deployment/safe_setup_ec2.sh || handle_error "Failed to run setup script"
 
 # Set up deployment service
 log "Setting up deployment service..."
