@@ -66,26 +66,45 @@ done
 log "Running setup script..."
 sudo ./deployment/safe_setup_ec2.sh || handle_error "Failed to run setup script"
 
+# Install required packages
+log "Installing required packages..."
+sudo apt-get install -y bc || handle_error "Failed to install bc"
+
 # Set up deployment service
 log "Setting up deployment service..."
 tee /etc/systemd/system/deploy.service > /dev/null <<EOL
 [Unit]
 Description=Run deployment script on startup
 After=docker.service
+After=network.target
 
 [Service]
 Type=oneshot
 ExecStart=/opt/mquery-staging/deployment/deploy.sh
 RemainAfterExit=true
 User=$USER
+Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+WorkingDirectory=/opt/mquery-staging
 
 [Install]
 WantedBy=multi-user.target
 EOL
 
-systemctl daemon-reload || handle_error "Failed to reload systemd"
-systemctl enable deploy.service || handle_error "Failed to enable deployment service"
-systemctl start deploy.service || handle_error "Failed to start deployment service"
+# Reload systemd and start service
+log "Reloading systemd and starting service..."
+systemctl daemon-reload
+systemctl enable deploy.service
+
+# Check service status
+log "Checking service status..."
+if ! systemctl is-active --quiet deploy.service; then
+    log "Service failed to start. Checking logs..."
+    systemctl status deploy.service
+    journalctl -xeu deploy.service
+    exit 1
+fi
+
+log "Service started successfully!"
 
 # Set up container monitoring
 log "Setting up container monitoring..."
