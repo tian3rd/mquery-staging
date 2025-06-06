@@ -71,37 +71,92 @@ docker-compose down --remove-orphans || handle_error "Failed to stop containers"
 
 # Authenticate with ECR using IAM role
 log "Authenticating with ECR using IAM role..."
-# Get credentials from instance metadata
+
+# Verify AWS CLI is configured
+log "Verifying AWS CLI configuration..."
+aws configure list || handle_error "AWS CLI is not configured"
+
+# Verify IAM role is attached
+log "Checking IAM role attachment..."
 INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)
+if [ -z "$INSTANCE_ID" ]; then
+    handle_error "Failed to get instance ID"
+fi
+log "Instance ID: $INSTANCE_ID"
+
 REGION=ap-southeast-2
 
 # Get IAM role credentials
 log "Getting IAM role credentials..."
 CREDENTIALS=$(curl -s http://169.254.169.254/latest/meta-data/iam/security-credentials/)
 if [ -z "$CREDENTIALS" ]; then
-    log "No IAM role found. Using default credentials..."
+    log "No IAM role found. Attempting to use default credentials..."
+    
+    # Verify we can get ECR token with default credentials
+    log "Verifying ECR token with default credentials..."
+    if ! aws ecr get-login-password --region $REGION > /dev/null 2>&1; then
+        handle_error "Failed to get ECR token with default credentials"
+    fi
+    
+    # Login to ECR
+    log "Logging into ECR with default credentials..."
     aws ecr get-login-password --region $REGION | docker login --username AWS --password-stdin 905418328516.dkr.ecr.ap-southeast-2.amazonaws.com
 else
-    log "Using IAM role: $CREDENTIALS"
+    log "Found IAM role: $CREDENTIALS"
+    
     # Get the credentials for the IAM role
+    log "Getting role credentials..."
     ROLE_CREDENTIALS=$(curl -s http://169.254.169.254/latest/meta-data/iam/security-credentials/$CREDENTIALS)
+    if [ -z "$ROLE_CREDENTIALS" ]; then
+        handle_error "Failed to get role credentials"
+    fi
+    
     ACCESS_KEY=$(echo $ROLE_CREDENTIALS | jq -r '.AccessKeyId')
     SECRET_KEY=$(echo $ROLE_CREDENTIALS | jq -r '.SecretAccessKey')
     TOKEN=$(echo $ROLE_CREDENTIALS | jq -r '.Token')
     
+    if [ -z "$ACCESS_KEY" ] || [ -z "$SECRET_KEY" ] || [ -z "$TOKEN" ]; then
+        handle_error "Incomplete IAM role credentials"
+    fi
+    
     # Configure AWS CLI with IAM role credentials
+    log "Configuring AWS CLI with IAM role credentials..."
     aws configure set aws_access_key_id $ACCESS_KEY
     aws configure set aws_secret_access_key $SECRET_KEY
     aws configure set aws_session_token $TOKEN
     aws configure set region $REGION
     
-    # Authenticate with ECR
-    aws ecr get-login-password --region $REGION | docker login --username AWS --password-stdin 905418328516.dkr.ecr.ap-southeast-2.amazonaws.com
+    # Verify AWS CLI configuration
+    log "Verifying AWS CLI configuration..."
+    aws sts get-caller-identity || handle_error "Failed to verify AWS CLI configuration"
+    
+    # Get ECR token
+    log "Getting ECR token..."
+    TOKEN=$(aws ecr get-login-password --region $REGION)
+    if [ -z "$TOKEN" ]; then
+        handle_error "Failed to get ECR token"
+    fi
+    
+    # Login to ECR
+    log "Logging into ECR..."
+    echo "$TOKEN" | docker login --username AWS --password-stdin 905418328516.dkr.ecr.ap-southeast-2.amazonaws.com
 fi
 
 # Verify ECR authentication
 log "Verifying ECR authentication..."
-docker pull 905418328516.dkr.ecr.ap-southeast-2.amazonaws.com/dev/mquery-backend:latest || handle_error "Failed to authenticate with ECR"
+# First check if we can list repositories
+aws ecr describe-repositories || handle_error "Failed to describe ECR repositories"
+
+# Then try to pull the image
+log "Testing image pull..."
+docker pull 905418328516.dkr.ecr.ap-southeast-2.amazonaws.com/dev/mquery-backend:latest
+if [ $? -ne 0 ]; then
+    # Get detailed error
+    ERROR=$(docker pull 905418328516.dkr.ecr.ap-southeast-2.amazonaws.com/dev/mquery-backend:latest 2>&1)
+    handle_error "Failed to pull image: $ERROR"
+fi
+
+log "ECR authentication verified successfully!"
 
 # Pull latest image
 log "Pulling latest image from ECR..."
