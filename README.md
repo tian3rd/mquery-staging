@@ -96,20 +96,46 @@ If the error persists after these steps, consider:
    2. Click "Create role"
    3. Select "CodeDeploy" as the service that will use this role
    4. Attach policies:
-      - AWSCodeDeployAgentRole
-      - AmazonEC2ContainerRegistryReadOnly
-   5. Name it "CodeDeployServiceRole"
+      - AWSCodeDeployRole
+      - AmazonEC2ContainerRegistryReadOnly (Add this after creating the role):
+        1. Go to IAM Console -> Roles
+        2. Select "CodeDeployServiceRole"
+        3. Click "Add permissions"
+        4. Click "Attach policies"
+        5. In the search box, type "AmazonEC2ContainerRegistryReadOnly"
+        6. Select the policy
+        7. Click "Add permissions"
+   5. Name it "mquery-codeDeployServiceRole"
    6. Click "Create role"
 
 2. **Create IAM Role for CodePipeline**:
    1. Go to AWS Console -> IAM -> Roles
    2. Click "Create role"
-   3. Select "CodePipeline" as the service that will use this role
-   4. Attach policies:
+   3. Select "Trusted entity type": "Custom trust policy"
+   4. Click "View policy document"
+   5. Replace the policy with:
+   ```json
+    {
+        "Version": "2012-10-17",
+        "Statement": [
+        {
+            "Effect": "Allow",
+            "Principal": {
+            "Service": "codepipeline.amazonaws.com"
+            },
+            "Action": "sts:AssumeRole"
+        }
+        ]
+    }
+   ```
+   6. Click "Next: Permissions"
+   7. Attach policies:
       - AWSCodePipelineFullAccess
       - AWSCodeDeployFullAccess
-   5. Name it "CodePipelineServiceRole"
-   6. Click "Create role"
+   8. Name it "mquery-codePipelineServiceRole"
+   9. Click "Create role"
+
+   **Note:** The role will automatically get the trust relationship needed for CodePipeline to assume this role.
 
 3. **Create CodeDeploy Application**:
    1. Go to AWS Console -> CodeDeploy
@@ -150,39 +176,108 @@ If the error persists after these steps, consider:
 6. **Create CodePipeline**:
    1. Go to AWS Console -> CodePipeline
    2. Click "Create pipeline"
-   3. Pipeline name: "mquery-staging-pipeline"
-   4. Service role: "CodePipelineServiceRole"
-   5. Click "Create"
+   3. Choose category: "Deployment"
+   4. Select template: "Push to ECR"
+   5. Click "Next"
+   6. Pipeline name: "mquery-staging-pipeline"
+   7. Service role: "mquery-codePipelineServiceRole"
+   8. Click "Next"
+   9. Configure template:
+      - ConnectionArn: Leave blank (we'll use GitHub connection)
+      - FullRepositoryId: Leave blank (we'll use GitHub repository)
+      - BranchName: Leave blank (we'll use GitHub branch)
+      - DockerBuildContext: "." (use current directory)
+      - DockerFilePath: "Dockerfile" (path to your Dockerfile)
+      - ImageTag: "latest" (use latest tag)
+      - RetentionPolicy: "Delete" (clean up resources when deleting stack)
+   10. Click "Next"
+   11. Click "Create pipeline"
 
-7. **Add Source Stage**:
-   1. Click "Add source stage"
-   2. Source provider: "GitHub"
-   3. Connect to GitHub
-   4. Repository: Select your repository
-   5. Branch: "main"
-   6. Click "Add source"
+   **Note:** We'll use the "Push to ECR" template because:
+   - It provides the complete pipeline structure we need
+   - It includes all three required stages:
+     1. Source (GitHub)
+     2. Build (CodeBuild - Docker build/tag/push)
+     3. Deploy (CodeDeploy)
+   - No modifications to the stages are needed after creation
+   - This template is the most appropriate choice for our deployment needs
 
-8. **Add Deploy Stage**:
-   1. Click "Add deploy stage"
-   2. Deployment provider: "CodeDeploy"
-   3. Application name: "mquery-staging"
-   4. Deployment group: "mquery-staging-group"
-   5. Click "Add deploy"
-   6. Click "Create pipeline"
+   **Important:** The pipeline is correctly configured with the ECR build stage using AWS CodeBuild. This stage handles:
+   - Building the Docker image
+   - Tagging it
+   - Pushing it to ECR
+   - No stages need to be removed or modified after creation
+   - The pipeline uses AWS CodeBuild for the build stage, which is the recommended approach for ECR deployments
 
-9. **Verify Pipeline**:
-   1. Go to CodePipeline console
-   2. Click on your pipeline
-   3. You should see the pipeline stages:
+7. **Configure Source Stage**:
+   - The source stage is automatically configured when using the "Push to ECR" template
+   - It uses GitHub as the source provider
+   - The template will automatically:
+     1. Connect to your GitHub repository
+     2. Set up the connection
+     3. Configure the source stage with your repository
+     4. Set the default branch to "backend"
+     5. Use "CodePipeline default" as the output artifact format
+
+   **Note:** All source stage configuration is handled automatically by the template. No manual steps are needed.
+
+8. **Verify Pipeline Structure**:
+   1. After pipeline creation, verify the pipeline has three stages:
       - Source (GitHub)
+      - Build (CodeBuild - Docker build/tag/push)
       - Deploy (CodeDeploy)
-   4. Click "Release change" to manually trigger the first deployment
+   2. The build stage is essential as it:
+      - Builds the Docker image
+      - Tags it with the specified tag
+      - Pushes it to ECR
+   3. The deploy stage uses CodeDeploy to deploy to your EC2 instance
 
-10. **Test Deployment**:
-    1. After deployment completes:
-    ```bash
-    # Test endpoints
-    curl http://YOUR_EC2_IP:8000
+   **Note:** The pipeline structure is correct with three stages:
+   1. Source (GitHub)
+   2. Build (CodeBuild)
+   3. Deploy (CodeDeploy)
+
+9. **Test Pipeline**:
+   1. First manual test:
+      - Go to CodePipeline console
+      - Click on your pipeline
+      - Click "Release change" button
+      - Monitor the pipeline execution in the console
+      - Check each stage status:
+        * Source: Should show "Succeeded"
+        * Build: Should show "Succeeded"
+        * Deploy: Should show "Succeeded"
+
+   2. Automated test (recommended):
+      - Make a small change to any file in your local repository
+      - Commit and push to the `backend` branch:
+        ```bash
+        git add .
+        git commit -m "Test change for pipeline"
+        git push origin backend
+        ```
+      - The pipeline should automatically trigger
+      - Monitor the pipeline execution in the console
+      - Verify:
+        * Pipeline starts automatically on push
+        * All stages complete successfully
+        * Application is deployed to EC2
+
+   3. Verify deployment:
+      ```bash
+      # Check if application is running
+      curl http://YOUR_EC2_IP:8000
+      
+      # Check if endpoints work
+      curl http://YOUR_EC2_IP:8000/columns
+      ```
+
+   4. Verify ECR image:
+      - Go to AWS ECR console
+      - Find your repository
+      - Verify the latest image tag was pushed
+
+   **Note:** The pipeline should automatically trigger on any push to the `backend` branch. No manual "Release change" is needed after the first test.
     ```
 </details>
 
